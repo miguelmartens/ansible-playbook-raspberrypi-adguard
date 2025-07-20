@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# Log file
+LOG_FILE="/var/log/adguard-update.log"
+
+# Function to log messages
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" | tee -a "$LOG_FILE"
+}
+
+# Check if running as root
+if [ "$EUID" -ne 0 ]; then
+    log "Please run as root"
+    exit 1
+fi
+
+# Get current version
+CURRENT_VERSION=$(/usr/local/bin/AdGuardHome --version | grep -oP 'v\K[0-9.]+')
+log "Current version: $CURRENT_VERSION"
+
+# Get latest version
+LATEST_VERSION=$(curl -s https://api.github.com/repos/AdguardTeam/AdGuardHome/releases/latest | grep -oP '"tag_name": "v\K[0-9.]+')
+log "Latest version: $LATEST_VERSION"
+
+# Compare versions
+if [ -z "$LATEST_VERSION" ]; then
+    log "Failed to get latest version from GitHub"
+    exit 1
+fi
+
+if [ "$CURRENT_VERSION" = "$LATEST_VERSION" ]; then
+    log "Already running the latest version"
+    exit 0
+fi
+
+# Download and install new version
+log "Downloading new version..."
+TEMP_DIR=$(mktemp -d)
+cd "$TEMP_DIR" || exit 1
+
+curl -L "https://github.com/AdguardTeam/AdGuardHome/releases/latest/download/AdGuardHome_linux_arm64.tar.gz" -o AdGuardHome.tar.gz
+if [ $? -ne 0 ]; then
+    log "Failed to download new version"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+# Extract and install
+tar xzf AdGuardHome.tar.gz
+if [ $? -ne 0 ]; then
+    log "Failed to extract archive"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+# Stop AdGuard Home service
+systemctl stop adguardhome
+if [ $? -ne 0 ]; then
+    log "Failed to stop AdGuard Home service"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+# Install new binary
+cp AdGuardHome/AdGuardHome /usr/local/bin/AdGuardHome
+chmod 755 /usr/local/bin/AdGuardHome
+
+# Start AdGuard Home service
+systemctl start adguardhome
+if [ $? -ne 0 ]; then
+    log "Failed to start AdGuard Home service"
+    rm -rf "$TEMP_DIR"
+    exit 1
+fi
+
+# Cleanup
+rm -rf "$TEMP_DIR"
+log "Update completed successfully" 

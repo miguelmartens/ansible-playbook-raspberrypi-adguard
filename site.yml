@@ -1,0 +1,43 @@
+---
+- name: Configure Raspberry Pi
+  hosts: all
+  become: true
+  vars:
+    # Storage configuration
+    ssd_device: "/dev/sda"  # Adjust if your SSD appears as a different device
+
+    # Common configuration
+    timezone: "Europe/Amsterdam"
+    locale: "en_US.UTF-8"
+    ssh_port: 22  # Default SSH port
+
+    # Security configuration
+    ufw_enabled: true
+    fail2ban_enabled: true
+
+  pre_tasks:
+    - name: Update APT package cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Perform dist-upgrade
+      apt:
+        upgrade: dist
+        force_apt_get: yes
+
+    - name: Reload systemd to pick up new units
+      systemd:
+        daemon_reload: yes
+
+  roles:
+    # 1. Basic OS setup
+    - role: common
+    - role: network
+    - role: security
+
+    # 2. Storage setup
+    - role: storage
+
+    # 3. AdGuard Home setup
+    - role: adguard

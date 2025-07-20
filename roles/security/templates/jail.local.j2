@@ -1,0 +1,29 @@
+[DEFAULT]
+# Ban hosts for 1 hour
+bantime = 3600
+# Retry window of 10 minutes
+findtime = 600
+# Allow 3 retries before banning
+maxretry = 3
+# Ban on all interfaces
+banaction = ufw
+# Ignore private networks
+ignoreip = 127.0.0.1/8 ::1
+
+[sshd]
+enabled = true
+port = {{ ssh_port }}
+filter = sshd
+logpath = /var/log/auth.log
+maxretry = 3
+findtime = 600
+bantime = 3600
+
+[sshd-ddos]
+enabled = true
+port = {{ ssh_port }}
+filter = sshd-ddos
+logpath = /var/log/auth.log
+maxretry = 3
+findtime = 600
+bantime = 3600 

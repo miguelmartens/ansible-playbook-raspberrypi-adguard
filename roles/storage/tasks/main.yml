@@ -1,0 +1,54 @@
+---
+# SSD Storage Setup Tasks
+
+# Partitioning
+- name: Check if SSD is connected
+  stat:
+    path: "{{ ssd_device }}"
+  register: ssd_check
+  failed_when: false
+
+- name: Fail if SSD is not connected
+  fail:
+    msg: "SSD not found at {{ ssd_device }}. Please connect the SSD and try again."
+  when: not ssd_check.stat.exists
+
+- name: Check if SSD is already partitioned
+  stat:
+    path: "{{ ssd_device }}1"
+  register: partition_check
+  failed_when: false
+
+- name: Create partition on SSD
+  community.general.parted:
+    device: "{{ ssd_device }}"
+    number: 1
+    state: present
+    part_end: "100%"
+  when: not partition_check.stat.exists
+
+- name: Create ext4 filesystem on partition
+  filesystem:
+    fstype: ext4
+    dev: "{{ ssd_device }}1"
+  when: not partition_check.stat.exists
+
+- name: Get SSD UUID
+  command: blkid -s UUID -o value {{ ssd_device }}1
+  register: ssd_uuid
+  changed_when: false
+
+# Mount SSD at /mnt/ssd
+- name: Create mount point for SSD
+  file:
+    path: /mnt/ssd
+    state: directory
+    mode: '0755'
+
+- name: Add SSD mount to fstab
+  mount:
+    path: /mnt/ssd
+    src: "UUID={{ ssd_uuid.stdout }}"
+    fstype: ext4
+    opts: defaults
+    state: mounted
