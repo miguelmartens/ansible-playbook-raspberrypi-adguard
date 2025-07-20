@@ -1,0 +1,70 @@
+---
+# DHCP Configuration
+- name: Ensure dhcpcd is installed
+  apt:
+    name: dhcpcd5
+    state: present
+
+- name: Remove any static config in dhcpcd.conf
+  lineinfile:
+    path: /etc/dhcpcd.conf
+    regexp: '^(static|interface)'
+    state: absent
+
+- name: Restart DHCP client for clean start
+  service:
+    name: dhcpcd
+    state: restarted
+    enabled: true
+
+# DNS Configuration
+- name: Set system DNS servers
+  copy:
+    dest: /etc/resolv.conf
+    content: |
+      nameserver 1.1.1.1
+      nameserver 1.0.0.1
+    mode: '0644'
+  become: true
+
+- name: Prevent resolv.conf from being overwritten
+  lineinfile:
+    path: /etc/dhcp/dhclient.conf
+    line: 'supersede domain-name-servers 1.1.1.1, 1.0.0.1;'
+    regexp: '^supersede domain-name-servers'
+  become: true
+
+# Network Service Management
+- name: Check if NetworkManager is installed
+  stat:
+    path: /usr/bin/nmcli
+  register: network_manager
+  become: true
+
+- name: Check if systemd-networkd is active
+  command: systemctl is-active systemd-networkd
+  register: networkd_status
+  failed_when: false
+  changed_when: false
+  become: true
+
+- name: Restart NetworkManager if present
+  systemd:
+    name: NetworkManager
+    state: restarted
+  when: network_manager.stat.exists
+  become: true
+
+- name: Restart systemd-networkd if active
+  systemd:
+    name: systemd-networkd
+    state: restarted
+  when: networkd_status.rc == 0
+  become: true
+
+- name: Restart networking service if present
+  systemd:
+    name: networking
+    state: restarted
+  when: networkd_status.rc != 0 and not network_manager.stat.exists
+  become: true

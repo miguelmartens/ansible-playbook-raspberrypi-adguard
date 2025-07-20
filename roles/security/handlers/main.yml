@@ -1,0 +1,7 @@
+---
+# roles/security/handlers/main.yml
+
+- name: restart ssh
+  systemd:
+    name: ssh
+    state: restarted 

@@ -1,0 +1,128 @@
+---
+- name: Ensure adguard user exists
+  user:
+    name: adguard
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+
+- name: Create AdGuard Home directories on SSD
+  file:
+    path: "/mnt/ssd/adguard/{{ item }}"
+    state: directory
+    owner: adguard
+    group: adguard
+    mode: '0755'
+  loop:
+    - data
+    - config
+    - work
+
+- name: Download AdGuard Home release for ARMv8 (Raspberry Pi 4)
+  get_url:
+    url: "https://github.com/AdguardTeam/AdGuardHome/releases/latest/download/AdGuardHome_linux_arm64.tar.gz"
+    dest: /tmp/AdGuardHome.tar.gz
+    mode: '0644'
+
+- name: Extract AdGuard Home
+  unarchive:
+    src: /tmp/AdGuardHome.tar.gz
+    dest: /tmp/
+    remote_src: yes
+
+- name: Install AdGuard Home binary
+  copy:
+    src: /tmp/AdGuardHome/AdGuardHome
+    dest: /usr/local/bin/AdGuardHome
+    owner: root
+    group: root
+    mode: '0755'
+    remote_src: yes
+
+- name: Create systemd service for AdGuard Home
+  copy:
+    dest: /etc/systemd/system/adguardhome.service
+    content: |
+      [Unit]
+      Description=AdGuard Home: Network-wide ads & trackers blocking DNS server
+      After=network.target
+
+      [Service]
+      User=adguard
+      Group=adguard
+      WorkingDirectory=/mnt/ssd/adguard/work
+      ExecStart=/usr/local/bin/AdGuardHome --work-dir /mnt/ssd/adguard/work --config /mnt/ssd/adguard/config/AdGuardHome.yaml --no-check-update
+      Restart=on-failure
+      LimitNOFILE=4096
+      AmbientCapabilities=CAP_NET_BIND_SERVICE
+      CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+      NoNewPrivileges=yes
+      ProtectSystem=no
+      ProtectHome=no
+      PrivateTmp=yes
+      PrivateDevices=yes
+      ProtectKernelTunables=yes
+      ProtectKernelModules=yes
+      ProtectControlGroups=yes
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: '0644'
+
+- name: Reload systemd
+  systemd:
+    daemon_reload: yes
+
+- name: Check if systemd-resolved is installed
+  stat:
+    path: /lib/systemd/system/systemd-resolved.service
+  register: resolved_check
+
+- name: Stop and disable systemd-resolved
+  systemd:
+    name: systemd-resolved
+    state: stopped
+    enabled: no
+  when: resolved_check.stat.exists
+
+- name: Remove systemd-resolved symlink
+  file:
+    path: /etc/resolv.conf
+    state: absent
+
+- name: Create resolv.conf
+  copy:
+    dest: /etc/resolv.conf
+    content: |
+      nameserver 127.0.0.1
+      nameserver 1.1.1.1
+      nameserver 8.8.8.8
+    mode: '0644'
+
+- name: Enable and start AdGuard Home
+  systemd:
+    name: adguardhome
+    state: started
+    enabled: yes
+
+# Update script and cronjob setup
+- name: Install update script
+  template:
+    src: update-adguard.sh.j2
+    dest: /usr/local/bin/update-adguard.sh
+    mode: '0755'
+
+- name: Create log file
+  file:
+    path: /var/log/adguard-update.log
+    state: touch
+    mode: '0644'
+
+- name: Add cronjob for AdGuard Home updates
+  cron:
+    name: "Update AdGuard Home"
+    job: "/usr/local/bin/update-adguard.sh"
+    hour: "3"
+    minute: "0"
+    weekday: "0"
+    user: root 

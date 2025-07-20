@@ -1,0 +1,91 @@
+---
+# roles/security/tasks/main.yml
+
+# SSH Configuration
+- name: Configure SSH
+  template:
+    src: sshd_config.j2
+    dest: /etc/ssh/sshd_config
+    mode: '0600'
+    validate: '/usr/sbin/sshd -t -f %s'
+  notify: restart ssh
+
+- name: Create SSH directory
+  file:
+    path: /etc/ssh
+    state: directory
+    mode: '0755'
+
+# Firewall Configuration
+- name: Install UFW
+  apt:
+    name: ufw
+    state: present
+    update_cache: yes
+
+- name: Allow SSH
+  ufw:
+    rule: allow
+    port: "{{ ssh_port }}"
+    proto: tcp
+
+- name: Allow HTTP
+  ufw:
+    rule: allow
+    port: 80
+    proto: tcp
+
+- name: Allow HTTPS
+  ufw:
+    rule: allow
+    port: 443
+    proto: tcp
+
+# AdGuard Home ports
+- name: Allow DNS (TCP)
+  ufw:
+    rule: allow
+    port: 53
+    proto: tcp
+
+- name: Allow DNS (UDP)
+  ufw:
+    rule: allow
+    port: 53
+    proto: udp
+
+- name: Allow AdGuard Home Web Interface
+  ufw:
+    rule: allow
+    port: 3000
+    proto: tcp
+
+- name: Enable UFW
+  ufw:
+    state: enabled
+    policy: deny
+  when: ufw_enabled | bool
+
+# Install and configure fail2ban
+- name: Install fail2ban
+  apt:
+    name: fail2ban
+    state: present
+    update_cache: yes
+
+- name: Configure fail2ban
+  template:
+    src: jail.local.j2
+    dest: /etc/fail2ban/jail.local
+    mode: '0644'
+  when: fail2ban_enabled | bool
+
+- name: Start and enable fail2ban
+  systemd:
+    name: fail2ban
+    state: started
+    enabled: yes
+  when: fail2ban_enabled | bool
+
+- name: Set timezone to Europe/Amsterdam
+  command: timedatectl set-timezone Europe/Amsterdam
